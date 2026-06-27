@@ -43,6 +43,17 @@ def _size_score(market_cap) -> float:
     return 15.0
 
 
+def conviction_tier(score: int) -> str:
+    """Human label for how strong a setup the model thinks this is."""
+    if score >= 70:
+        return "High conviction"
+    if score >= 58:
+        return "Strong"
+    if score >= 46:
+        return "Moderate"
+    return "Speculative"
+
+
 def _senior_label(title: str) -> Optional[str]:
     t = (title or "").upper()
     if "CEO" in t or "CHIEF EXECUTIVE" in t:
@@ -188,6 +199,7 @@ def build(days: int = 30, min_value: float = None, min_cap: float = 0,
             "market_score": mkt_score,
             "size_score": round(size_score),
             "opp_score": opp_score,
+            "conviction": conviction_tier(opp_score),
             "insider_breakdown": insider_bd,
             "market_breakdown": mkt_bd,
             "last_trade": max(t["trade_date"] for t in trades),

@@ -61,6 +61,9 @@ def index():
                                            min_cap=min_cap, limit=100)
             if o["opp_score"] >= min_score]
 
+    # "Best chances" — the model's highest-conviction setups, surfaced up top.
+    top_picks = opps[:5]
+
     regime = market_regime()
     sector_tot: dict = {}
     for o in opps:
@@ -76,7 +79,8 @@ def index():
         "regime": regime,
     }
     return render_template_string(
-        OPPS_PAGE, active="opps", opps=opps, overview=overview, human_cap=human_cap,
+        OPPS_PAGE, active="opps", opps=opps, top_picks=top_picks,
+        overview=overview, human_cap=human_cap,
         f=dict(min_score=min_score, min_value=min_value, min_cap=min_cap, days=days),
         meta={"last_poll": db.get_meta("last_poll", "never"), **db.stats()},
         cfg=config,
@@ -203,6 +207,38 @@ OPPS_PAGE = r"""
     {% endif %}
   </div>
 
+  {% if top_picks %}
+  <div style="margin-bottom:22px">
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+      <h2 style="font-size:16px;margin:0;font-weight:700">🎯 Best Chances Today</h2>
+      <span class="muted" style="font-size:12px">the model's highest-conviction setups — insider conviction + market setup + company size, ranked</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:12px">
+      {% for o in top_picks %}
+      {% set tier = 's-hi' if o.opp_score>=70 else 's-mid' if o.opp_score>=55 else 's-lo' %}
+      <div style="background:linear-gradient(180deg,rgba(210,153,34,.08),var(--panel));
+                  border:1px solid rgba(210,153,34,.35);border-radius:12px;padding:14px;display:flex;gap:14px">
+        <div style="text-align:center;min-width:52px">
+          <div class="muted" style="font-size:12px;font-weight:700">#{{ loop.index }}</div>
+          <div class="{{ tier }}" style="font-size:22px;font-weight:800;border-radius:8px;padding:6px 0;margin-top:4px">{{ o.opp_score }}</div>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+            <a href="http://openinsider.com/{{ o.ticker }}" target="_blank" style="font-size:16px;font-weight:700">{{ o.ticker }}</a>
+            <span style="font-weight:600">{{ o.company }}</span>
+            <span style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.03em">{{ o.conviction }}</span>
+          </div>
+          <div style="font-size:13px;margin:6px 0;line-height:1.4">{{ o.thesis }}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            {% for t in o.tags %}<span style="background:#0d1117;border:1px solid var(--line);color:var(--muted);font-size:10px;padding:1px 7px;border-radius:999px">{{ t }}</span>{% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <form method="get">
     <label>Min opp score <input type="number" name="min_score" value="{{ f.min_score|int }}" min="0" max="100"></label>
     <label>Min trade $ <input type="number" name="min_value" value="{{ f.min_value|int }}" step="100000"></label>
@@ -215,6 +251,8 @@ OPPS_PAGE = r"""
     <div class="empty">No opportunities match yet — the poller may still be collecting,
       or loosen the filters.</div>
   {% endif %}
+
+  {% if opps %}<h2 style="font-size:14px;margin:4px 0 12px;font-weight:600" class="muted">All opportunities ({{ opps|length }})</h2>{% endif %}
 
   {% for o in opps %}
   {% set sc = 's-hi' if o.opp_score>=70 else 's-mid' if o.opp_score>=55 else 's-lo' %}
