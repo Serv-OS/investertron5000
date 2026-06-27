@@ -1,11 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/index.py": {
-      "includeFiles": "**/*.py"
-    },
     "api/poll.py": {
-      "includeFiles": "**/*.py",
       "maxDuration": 300
     }
   },
