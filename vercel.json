@@ -3,9 +3,16 @@
   "functions": {
     "api/index.py": {
       "includeFiles": "**/*.py"
+    },
+    "api/poll.py": {
+      "includeFiles": "**/*.py",
+      "maxDuration": 300
     }
   },
+  "crons": [
+    { "path": "/api/poll", "schedule": "0 23 * * *" }
+  ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    { "source": "/((?!api/poll).*)", "destination": "/api/index" }
   ]
 }
