@@ -60,17 +60,17 @@ def poll_once() -> list:
         elif tt.startswith("S") and v >= config.MIN_SELL_VALUE:
             candidates.append(t)
 
-    new_ids, new_buy_ids, affected_tickers = [], [], set()
+    new_ids, new_buy_ids, buy_tickers = [], [], set()
     for t in candidates:
         if db.insert_trade(t):
             new_ids.append(t["id"])
-            affected_tickers.add(t["ticker"])
             if (t["trade_type"] or "").upper().startswith("P"):
                 new_buy_ids.append(t["id"])
+                buy_tickers.add(t["ticker"])  # only buys need quote enrichment + scoring
 
-    # Enrich + score every ticker that gained a new trade this round.
-    # A small delay keeps us polite to the (unauthenticated) quote API.
-    for ticker in affected_tickers:
+    # Enrich + score every ticker that gained a new BUY this round (sells don't
+    # need quotes). A small delay keeps us polite to the quote API.
+    for ticker in buy_tickers:
         try:
             _rescore_ticker(ticker)
         except Exception:  # noqa: BLE001
