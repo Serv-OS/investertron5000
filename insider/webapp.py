@@ -26,6 +26,27 @@ def _fnum(name, default):
         return default
 
 
+@app.route("/health")
+def health():
+    """Diagnostics — confirms config + DB connectivity. No secrets exposed."""
+    import os
+    info = {
+        "version": __version__,
+        "backend": "postgres" if db.IS_PG else "sqlite",
+        "database_url_set": bool(os.environ.get("DATABASE_URL")
+                                 or os.environ.get("OI_DATABASE_URL")),
+    }
+    try:
+        db.init_db()
+        info["db"] = "ok"
+        info["stats"] = db.stats()
+        return jsonify(info), 200
+    except Exception as exc:  # noqa: BLE001
+        info["db"] = "error"
+        info["error"] = f"{type(exc).__name__}: {exc}"
+        return jsonify(info), 500
+
+
 # ----------------------------------------------------------------------------
 # Best Opportunities (home)
 # ----------------------------------------------------------------------------
