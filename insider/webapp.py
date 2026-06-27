@@ -47,6 +47,29 @@ def health():
         return jsonify(info), 500
 
 
+@app.route("/run-poll")
+def run_poll():
+    """Run one scrape cycle. Hit daily by the Vercel Cron (see vercel.json).
+
+    If CRON_SECRET is set, require it (Vercel cron sends it as a Bearer token;
+    a ?key= query param also works for manual triggers). Open if unset.
+    """
+    import os
+    from insider import poller
+
+    secret = os.environ.get("CRON_SECRET")
+    if secret:
+        bearer = request.headers.get("authorization", "")
+        if bearer != f"Bearer {secret}" and request.args.get("key") != secret:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+    try:
+        db.init_db()
+        alerts = poller.poll_once()
+        return jsonify({"ok": True, "new_alerts": len(alerts)})
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": f"{type(exc).__name__}: {exc}"}), 500
+
+
 # ----------------------------------------------------------------------------
 # Best Opportunities (home)
 # ----------------------------------------------------------------------------
