@@ -1,0 +1,6 @@
+.venv/
+venv/
+insider.db
+__pycache__/
+*.pyc
+.env
