@@ -43,6 +43,33 @@ def _size_score(market_cap) -> float:
     return 15.0
 
 
+def insider_signal(flow: dict) -> dict:
+    """Direction of net insider activity for a ticker — a *signal*, not advice.
+
+    Bullish  = insiders are net buyers (the strong, well-studied signal).
+    Bearish  = insiders are net sellers (weaker — sells happen for many reasons).
+    Mixed    = meaningful buying AND selling.
+    """
+    bv = flow.get("buy_value") or 0
+    sv = flow.get("sell_value") or 0
+    nb = flow.get("n_buyers") or 0
+    ns = flow.get("n_sellers") or 0
+
+    if bv == 0 and sv == 0:
+        return {"label": "Neutral", "tone": "neutral", "reason": "no notable insider trades"}
+    if sv == 0 or bv >= 2.5 * sv:
+        net = bv - sv
+        r = f"{nb} insider{'s' if nb != 1 else ''} buying"
+        if sv:
+            r += f", net {human_cap(net)} after sells"
+        return {"label": "Bullish", "tone": "bull", "reason": r}
+    if bv == 0 or sv >= 2.5 * bv:
+        return {"label": "Bearish", "tone": "bear",
+                "reason": f"{ns} insider{'s' if ns != 1 else ''} sold {human_cap(sv)}"}
+    return {"label": "Mixed", "tone": "mixed",
+            "reason": f"buying {human_cap(bv)} vs selling {human_cap(sv)}"}
+
+
 def conviction_tier(score: int) -> str:
     """Human label for how strong a setup the model thinks this is."""
     if score >= 70:
@@ -206,6 +233,7 @@ def build(days: int = 30, min_value: float = None, min_cap: float = 0,
         }
         o["tags"] = _tags(o)
         o["thesis"] = _thesis(o)
+        o["signal"] = insider_signal(db.ticker_flow(ticker, days))
         if min_cap and (market_cap is None or market_cap < min_cap):
             continue
         opps.append(o)

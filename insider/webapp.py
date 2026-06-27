@@ -118,6 +118,22 @@ def api_opportunities():
 
 
 # ----------------------------------------------------------------------------
+# Big Sells
+# ----------------------------------------------------------------------------
+@app.route("/sells")
+def sells():
+    min_value = _fnum("min_value", config.MIN_SELL_VALUE)
+    days = int(_fnum("days", 30))
+    rows = db.query_sells(min_value=min_value, days=days, limit=300)
+    return render_template_string(
+        SELLS_PAGE, active="sells", sells=rows, human_cap=human_cap,
+        f=dict(min_value=min_value, days=days),
+        meta={"last_poll": db.get_meta("last_poll", "never"), **db.stats()},
+        cfg=config,
+    )
+
+
+# ----------------------------------------------------------------------------
 # Trade feed
 # ----------------------------------------------------------------------------
 @app.route("/trades")
@@ -195,6 +211,7 @@ NAV = """
   <h1>📈 Insider Buy Tracker</h1>
   <nav>
     <a href="/" class="{{ 'on' if active=='opps' else '' }}">Best Opportunities</a>
+    <a href="/sells" class="{{ 'on' if active=='sells' else '' }}">Big Sells</a>
     <a href="/trades" class="{{ 'on' if active=='trades' else '' }}">Trade Feed</a>
   </nav>
   <span class="sub">SEC Form 4 insider buys · scored 0–100 · last poll {{ meta.last_poll }}
@@ -230,6 +247,8 @@ OPPS_PAGE = r"""
     {% endif %}
   </div>
 
+  {% set tone_color = {'bull':'#3fb950','bear':'#f85149','mixed':'#d29922','neutral':'#8b949e'} %}
+  {% set tone_icon = {'bull':'🟢','bear':'🔴','mixed':'🟡','neutral':'⚪'} %}
   {% if top_picks %}
   <div style="margin-bottom:22px">
     <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px;flex-wrap:wrap">
@@ -250,6 +269,7 @@ OPPS_PAGE = r"""
             <a href="http://openinsider.com/{{ o.ticker }}" target="_blank" style="font-size:16px;font-weight:700">{{ o.ticker }}</a>
             <span style="font-weight:600">{{ o.company }}</span>
             <span style="font-size:11px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.03em">{{ o.conviction }}</span>
+            <span title="{{ o.signal.reason }}" style="font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid {{ tone_color[o.signal.tone] }};color:{{ tone_color[o.signal.tone] }}">{{ tone_icon[o.signal.tone] }} {{ o.signal.label }}</span>
           </div>
           <div style="font-size:13px;margin:6px 0;line-height:1.4">{{ o.thesis }}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -293,6 +313,7 @@ OPPS_PAGE = r"""
            style="font-size:18px;font-weight:700">{{ o.ticker }}</a>
         <span style="font-weight:600">{{ o.company }}</span>
         <span class="muted" style="font-size:12px">{{ o.sector or '' }} · {{ human_cap(o.market_cap) }}</span>
+        <span title="{{ o.signal.reason }}" style="font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;border:1px solid {{ tone_color[o.signal.tone] }};color:{{ tone_color[o.signal.tone] }}">{{ tone_icon[o.signal.tone] }} {{ o.signal.label }}</span>
         <a class="muted" style="font-size:12px" href="https://stockanalysis.com/stocks/{{ o.ticker }}/" target="_blank">chart ↗</a>
       </div>
 
@@ -344,8 +365,12 @@ OPPS_PAGE = r"""
 <footer>
   <b>Opportunity score = 45% insider conviction + 30% market context + 25% company size.</b>
   Insider = $ size · seniority · cluster · ownership Δ. Market = proximity to 52-wk lows ·
-  analyst upside · quality. Size = market cap (the large-company focus).
-  Data: openinsider.com (SEC Form 4) + Nasdaq. Not investment advice.
+  analyst upside · quality. Size = market cap (the large-company focus).<br>
+  <b>Insider Signal</b> (🟢 Bullish / 🔴 Bearish / 🟡 Mixed) reflects net insider buying vs
+  selling — a data signal derived from public SEC filings, <b>not financial advice and not a
+  recommendation to buy or sell</b>. Insiders sell for many reasons (taxes, diversification,
+  options); buying is the stronger signal. Do your own research.
+  Data: openinsider.com (SEC Form 4) + Nasdaq.
 </footer>
 </body></html>
 """
@@ -408,6 +433,68 @@ TRADES_PAGE = r"""
   {% endif %}
 </div>
 <footer>Raw scored insider buys. Data: openinsider.com (SEC Form 4). Not investment advice.</footer>
+</body></html>
+"""
+
+
+SELLS_PAGE = r"""
+<!doctype html><html lang="en"><head>""" + HEAD + r"""
+<style>
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+        border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:#11161d}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr:hover td{background:#1b222b}
+  .tick{font-weight:700}
+  .sell{color:var(--red);font-weight:700}
+  .oe{color:var(--muted);font-size:11px}
+</style>
+<title>Big Sells</title></head><body>
+""" + NAV + r"""
+<div class="wrap">
+  <div style="background:rgba(248,81,73,.07);border:1px solid rgba(248,81,73,.3);
+              border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px">
+    🔴 <b>Large insider sells</b> (≥ ${{ '{:,.0f}'.format(f.min_value) }}).
+    Selling is a <b>weaker</b> signal than buying — insiders sell for taxes, diversification,
+    and option exercises. <span class="oe">"Sale+OE" = sale tied to an option exercise (weakest).</span>
+    Informational, <b>not financial advice</b>.
+  </div>
+
+  <form method="get">
+    <label>Min sell $ <input type="number" name="min_value" value="{{ f.min_value|int }}" step="100000"></label>
+    <label>Days back <input type="number" name="days" value="{{ f.days }}" min="1" max="365"></label>
+    <button type="submit">Filter</button>
+  </form>
+
+  {% if sells %}
+  <table>
+    <thead><tr>
+      <th class="num">Value</th><th>Ticker</th><th>Company</th><th>Insider</th><th>Title</th>
+      <th class="num">ΔOwn</th><th class="num">Price</th><th>Type</th><th>Filed</th>
+    </tr></thead>
+    <tbody>
+    {% for s in sells %}
+      <tr>
+        <td class="num sell">-${{ '{:,.0f}'.format(s.value or 0) }}</td>
+        <td class="tick"><a href="http://openinsider.com/{{ s.ticker }}" target="_blank">{{ s.ticker }}</a></td>
+        <td>{{ s.company }}</td>
+        <td>{{ s.insider }}</td>
+        <td class="muted">{{ s.title }}</td>
+        <td class="num">{% if s.own_chg_pct is not none %}{{ s.own_chg_pct|int }}%{% else %}—{% endif %}</td>
+        <td class="num">{{ '${:,.2f}'.format(s.price) if s.price else '—' }}</td>
+        <td>{{ 'Sale+OE' if '+' in (s.trade_type or '') else 'Sale' }}</td>
+        <td class="muted">{{ s.filing_date }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="empty">No large insider sells in this window yet.</div>
+  {% endif %}
+</div>
+<footer>Large insider sales from SEC Form 4 filings (openinsider.com). Selling is noisy —
+  not financial advice, not a recommendation to sell. Do your own research.</footer>
 </body></html>
 """
 

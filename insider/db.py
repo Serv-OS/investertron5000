@@ -235,6 +235,7 @@ def query_signals(min_score=0, min_value=0.0, min_market_cap=0.0,
         SELECT * FROM trades
         WHERE score >= :min_score
           AND value >= :min_value
+          AND trade_type LIKE 'P%'
           AND (:min_cap = 0 OR (market_cap IS NOT NULL AND market_cap >= :min_cap))
           AND trade_date >= :cutoff
         ORDER BY score DESC, value DESC
@@ -254,6 +255,42 @@ def query_signals(min_score=0, min_value=0.0, min_market_cap=0.0,
                 d["breakdown"] = {}
             out.append(d)
         return out
+
+
+def query_sells(min_value=0.0, days=30, limit=200) -> list:
+    """Large insider SALES, biggest first (for the Big Sells view)."""
+    sql = _q("""
+        SELECT * FROM trades
+        WHERE trade_type LIKE 'S%'
+          AND value >= :min_value
+          AND trade_date >= :cutoff
+        ORDER BY value DESC, trade_date DESC
+        LIMIT :limit
+    """)
+    with _conn() as con:
+        cur = con.cursor()
+        cur.execute(sql, {"min_value": min_value, "cutoff": _cutoff(days), "limit": limit})
+        return [dict(r) for r in cur.fetchall()]
+
+
+def ticker_flow(ticker: str, days: int = 30) -> dict:
+    """Net insider flow for a ticker: buy vs sell value + distinct actors."""
+    sql = _q("""
+        SELECT
+            COALESCE(SUM(CASE WHEN trade_type LIKE 'P%' THEN value ELSE 0 END), 0) AS buy_value,
+            COUNT(DISTINCT CASE WHEN trade_type LIKE 'P%' THEN insider END)        AS n_buyers,
+            COALESCE(SUM(CASE WHEN trade_type LIKE 'S%' THEN value ELSE 0 END), 0) AS sell_value,
+            COUNT(DISTINCT CASE WHEN trade_type LIKE 'S%' THEN insider END)        AS n_sellers
+        FROM trades
+        WHERE ticker = :ticker AND trade_date >= :cutoff
+    """)
+    with _conn() as con:
+        cur = con.cursor()
+        cur.execute(sql, {"ticker": ticker, "cutoff": _cutoff(days)})
+        r = cur.fetchone()
+        if r is None:
+            return {"buy_value": 0, "n_buyers": 0, "sell_value": 0, "n_sellers": 0}
+        return {k: (r[k] or 0) for k in ("buy_value", "n_buyers", "sell_value", "n_sellers")}
 
 
 def stats() -> dict:

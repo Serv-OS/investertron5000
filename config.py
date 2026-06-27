@@ -66,6 +66,15 @@ SOURCE_URL = _get(
     "OI_SOURCE_URL",
     "http://openinsider.com/latest-insider-purchases-25k",
 )
+# Big insider SALES, via the screener (xs=1 sales, xp=0, vl in $thousands).
+# vl=1000 => sells >= $1M. Used for the bearish side of the insider signal.
+SALES_URL = _get(
+    "OI_SALES_URL",
+    "http://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&"
+    "fdlyl=&fdlyh=&daysago=&xp=0&xs=1&vl=1000&vh=&ocl=&och=&sic1=-1&sicl=100&"
+    "sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&"
+    "sortcol=0&cnt=100&page=1",
+)
 USER_AGENT = _get(
     "OI_USER_AGENT",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -80,6 +89,8 @@ REQUEST_TIMEOUT = _get_int("OI_REQUEST_TIMEOUT", 30)
 # ----------------------------------------------------------------------------
 # Only insider BUYS at/above this dollar value are stored.
 MIN_TRADE_VALUE = _get_float("OI_MIN_TRADE_VALUE", 1_000_000)      # $1M
+# Only insider SELLS at/above this dollar value are stored.
+MIN_SELL_VALUE = _get_float("OI_MIN_SELL_VALUE", 1_000_000)        # $1M
 # Alerts (email/desktop) require the company to be at least this big.
 MIN_MARKET_CAP = _get_float("OI_MIN_MARKET_CAP", 2_000_000_000)    # $2B
 # Composite model score (0-100) required to fire an alert.

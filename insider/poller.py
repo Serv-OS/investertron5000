@@ -39,25 +39,34 @@ def _rescore_ticker(ticker: str) -> None:
 
 def poll_once() -> list:
     started = datetime.now()
-    try:
-        trades = scraper.fetch_trades()
-    except Exception as exc:  # noqa: BLE001
-        print(f"[{started:%H:%M:%S}] scrape failed: {exc}")
+    rows = []
+    for label, url in (("purchases", config.SOURCE_URL), ("sales", config.SALES_URL)):
+        try:
+            rows += scraper.fetch_trades(url)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[{started:%H:%M:%S}] {label} scrape failed: {exc}")
+    if not rows:
         return []
 
-    # Keep only purchases at/above the "large trade" threshold.
-    candidates = [
-        t for t in trades
-        if t["trade_type"].upper().startswith("P")
-        and t["value"] is not None
-        and t["value"] >= config.MIN_TRADE_VALUE
-    ]
+    # Keep large buys AND large sells (trade_type distinguishes them).
+    candidates = []
+    for t in rows:
+        tt = (t["trade_type"] or "").upper()
+        v = t["value"]
+        if v is None:
+            continue
+        if tt.startswith("P") and v >= config.MIN_TRADE_VALUE:
+            candidates.append(t)
+        elif tt.startswith("S") and v >= config.MIN_SELL_VALUE:
+            candidates.append(t)
 
-    new_ids, affected_tickers = [], set()
+    new_ids, new_buy_ids, affected_tickers = [], [], set()
     for t in candidates:
         if db.insert_trade(t):
             new_ids.append(t["id"])
             affected_tickers.add(t["ticker"])
+            if (t["trade_type"] or "").upper().startswith("P"):
+                new_buy_ids.append(t["id"])
 
     # Enrich + score every ticker that gained a new trade this round.
     # A small delay keeps us polite to the (unauthenticated) quote API.
@@ -68,10 +77,10 @@ def poll_once() -> list:
             traceback.print_exc()
         time.sleep(0.4)
 
-    # An alert fires for a NEW trade that clears the score bar AND sits in a
-    # large-enough company.
+    # An alert fires for a NEW buy that clears the score bar AND sits in a
+    # large-enough company. (Sells are surfaced in the UI, not alerted.)
     alerts = []
-    for trade_id in new_ids:
+    for trade_id in new_buy_ids:
         row = db.get_trade(trade_id)
         if row is None:
             continue
@@ -97,8 +106,10 @@ def poll_once() -> list:
 
     db.set_meta("last_poll", started.isoformat(timespec="seconds"))
     db.set_meta("last_poll_new", str(len(new_ids)))
-    print(f"[{started:%H:%M:%S}] scraped {len(trades)} rows · "
-          f"{len(candidates)} large buys · {len(new_ids)} new · "
+    n_buys = sum(1 for t in candidates if (t["trade_type"] or "").upper().startswith("P"))
+    n_sells = len(candidates) - n_buys
+    print(f"[{started:%H:%M:%S}] scraped {len(rows)} rows · "
+          f"{n_buys} large buys / {n_sells} large sells · {len(new_ids)} new · "
           f"{len(alerts)} alert(s)")
     return alerts
 
